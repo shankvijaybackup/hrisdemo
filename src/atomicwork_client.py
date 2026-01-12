@@ -20,30 +20,23 @@ class AtomicworkClient:
         masked_key = self.api_key[:4] + "..." + self.api_key[-4:] if len(self.api_key) > 8 else "wont_show"
         logger.info(f"Atomicwork Client Config - URL: {self.base_url}, Key: {masked_key}")
 
-    async def add_note(self, ticket_id: str, content: str, private: bool = True, attachment_path: str = None) -> Dict[str, Any]:
-        """Add a note to a ticket/request, optionally with an attachment"""
+    async def add_note(self, ticket_id: str, content: str, private: bool = False, attachment_path: str = None) -> Dict[str, Any]:
+        """Add a note to a ticket using the activity-notes endpoint"""
         
         # In demo mode
         if self.api_key == "dummy_key" or "atomicwork" not in self.base_url:
             logger.info(f"[MOCK] Adding {'private' if private else 'public'} note to {ticket_id}")
             return {"success": True, "message": "Mock note added"}
 
-        # 1. Upload attachment if present
-        attachment_id = None
-        if attachment_path and os.path.exists(attachment_path):
-            attachment_id = await self._upload_file(attachment_path)
-
-        # 2. Add Note - CHANGED to /requests/ based on user cURL
-        # Try /requests/ endpoint as the creation was at /requests/create
-        url = f"{self.base_url}/api/v1/requests/{ticket_id}/notes"
+        # Use the specific endpoint provided by user
+        url = f"{self.base_url}/api/v1/requests/{ticket_id}/activity-notes"
         
+        # Payload format matches user's cURL
         payload = {
-            "content": content,
-            "private": private
+            "is_private": str(private).lower(),  # "false" or "true"
+            "description": content,
+            "source": "PORTAL"
         }
-        
-        if attachment_id:
-            payload["attachment_ids"] = [attachment_id]
         
         logger.info(f"Posting note to: {url}")
         
@@ -59,6 +52,31 @@ class AtomicworkClient:
         except Exception as e:
             logger.error(f"Network error adding note to {ticket_id}: {str(e)}")
             return {"success": False, "error": str(e)}
+
+    async def resolve_request(self, ticket_id: str) -> Dict[str, Any]:
+        """Resolve the ticket using PATCH"""
+        url = f"{self.base_url}/api/v1/requests/{ticket_id}"
+        payload = {"status": "Resolved"}
+        
+        logger.info(f"Resolving ticket: {url}")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=payload, headers=self.headers) as response:
+                    if response.status in (200, 201):
+                        logger.info(f"Ticket {ticket_id} resolved successfully")
+                        return {"success": True}
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Failed to resolve ticket: {response.status} - {error_text}")
+                        return {"success": False, "error": f"HTTP {response.status}"}
+        except Exception as e:
+            logger.error(f"Network error resolving ticket {ticket_id}: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+    async def _upload_file(self, file_path: str) -> str:
+        # Disabled for now to prioritize note/resolve flow
+        return None
 
     async def _upload_file(self, file_path: str) -> str:
         """Upload a file and get its ID"""

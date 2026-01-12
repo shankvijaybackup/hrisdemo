@@ -164,7 +164,15 @@ async def process_hr_request(payload: WebhookPayload):
         )
         
         if update_result['success']:
-            logger.info(f"[{ticket_id}] Ticket updated successfully!")
+            logger.info(f"[{ticket_id}] Ticket updated successfully with note!")
+            
+            # Step 4: Resolve the ticket
+            logger.info(f"[{ticket_id}] resolving ticket...")
+            resolve_result = await atomicwork_client.resolve_request(ticket_id)
+            if resolve_result['success']:
+                logger.info(f"[{ticket_id}] Ticket resolved!")
+            else:
+                 logger.error(f"[{ticket_id}] Failed to resolve ticket")
         else:
             logger.error(f"[{ticket_id}] Failed to update ticket: {update_result.get('error')}")
         
