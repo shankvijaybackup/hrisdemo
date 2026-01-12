@@ -115,9 +115,9 @@ async def receive_webhook(payload: WebhookPayload, background_tasks: BackgroundT
     """
     Main webhook endpoint - receives HR service requests from Atomicwork
     """
-    logger.info(f"=" * 60)
-    logger.info(f"WEBHOOK RECEIVED")
-    logger.info(f"Full Payload: {payload.model_dump_json()}")
+    log(f"=" * 60)
+    log(f"WEBHOOK RECEIVED")
+    log(f"Full Payload: {payload.model_dump_json()}")
     
     # Normalize ID for logging
     tid = payload.display_id or payload.ticket_id or str(payload.id)
@@ -194,7 +194,7 @@ async def process_hr_request(payload: WebhookPayload):
         )
         
         if update_result['success']:
-        log(f"[{ticket_id}] Ticket updated successfully with note!")
+            log(f"[{ticket_id}] Ticket updated successfully with note!")
             
             # Step 4: Resolve the ticket
             log(f"[{ticket_id}] resolving ticket...")
