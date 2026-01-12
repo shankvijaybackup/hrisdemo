@@ -27,11 +27,34 @@ logger = logging.getLogger(__name__)
 from fastapi.staticfiles import StaticFiles
 
 # ... app init
+# ... imports
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+# ... app init
 app = FastAPI(
     title="HR Service Request Agent",
     description="NLP-powered HR service request automation for Atomicwork",
     version="1.0.0"
 )
+
+# Debug logging for startup
+logger.info("Server module loaded, initializing app...")
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    body = await request.body()
+    logger.error(f"Validation Error: {exc}")
+    logger.error(f"Body: {body.decode()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "Validation Failed", "errors": str(exc), "body": body.decode()},
+    )
+
+@app.get("/")
+async def health_check():
+    logger.info("Health check received")
+    return {"status": "live", "version": "1.0.0"}
 
 # Ensure output directory exists
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "hr_outputs")
