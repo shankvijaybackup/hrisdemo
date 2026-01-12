@@ -35,13 +35,26 @@ action_executor = HRActionExecutor()
 atomicwork_client = AtomicworkClient()
 
 # Request Models
+# Nested models for Atomicwork payload
+class Requester(BaseModel):
+    id: Optional[int] = None
+    email: Optional[str] = None
+    label: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
 class WebhookPayload(BaseModel):
-    ticket_id: str
-    issue_description: str
+    # New Standard Fields
+    id: Optional[int] = None
+    display_id: Optional[str] = None
+    subject: Optional[str] = None
+    requester: Optional[Requester] = None
+    
+    # Old Fields (Backward Compatibility/Aliases)
+    ticket_id: Optional[str] = None
+    issue_description: Optional[str] = None
     user_email: Optional[str] = None
-    machine_hostname: Optional[str] = None
     requester_name: Optional[str] = None
-    employee_id: Optional[str] = None
     
     model_config = {
         "extra": "ignore"
@@ -75,8 +88,11 @@ async def receive_webhook(payload: WebhookPayload, background_tasks: BackgroundT
     logger.info(f"=" * 60)
     logger.info(f"WEBHOOK RECEIVED")
     logger.info(f"Full Payload: {payload.model_dump_json()}")
-    logger.info(f"Ticket ID: {payload.ticket_id}")
-    logger.info(f"Description: {payload.issue_description}")
+    
+    # Normalize ID for logging
+    tid = payload.display_id or payload.ticket_id or str(payload.id)
+    
+    logger.info(f"Ticket ID: {tid}")
     logger.info(f"=" * 60)
     
     # Process in background to return quickly to Atomicwork
@@ -87,21 +103,27 @@ async def receive_webhook(payload: WebhookPayload, background_tasks: BackgroundT
     
     return {
         "status": "accepted",
-        "message": f"Processing HR request for ticket {payload.ticket_id}",
-        "ticket_id": payload.ticket_id
+        "message": f"Processing HR request for ticket {tid}",
+        "ticket_id": tid
     }
 
 async def process_hr_request(payload: WebhookPayload):
     """
     Background task to process the HR service request
-    1. Understand intent via NLP
-    2. Execute the appropriate action
-    3. Update Atomicwork ticket with results
     """
-    ticket_id = payload.ticket_id
-    description = payload.issue_description
-    user_email = payload.user_email or "unknown@company.com"
-    requester_name = payload.requester_name or user_email.split('@')[0]
+    # 1. Extract Data (Handle both formats)
+    ticket_id = payload.display_id or payload.ticket_id or str(payload.id)
+    description = payload.subject or payload.issue_description or ""
+    
+    user_email = "unknown@company.com"
+    requester_name = "Employee"
+    
+    if payload.requester:
+        user_email = payload.requester.email or user_email
+        requester_name = payload.requester.label or f"{payload.requester.first_name} {payload.requester.last_name}"
+    else:
+        user_email = payload.user_email or user_email
+        requester_name = payload.requester_name or user_email.split('@')[0]
     
     try:
         # Step 1: Route intent
@@ -130,9 +152,15 @@ async def process_hr_request(payload: WebhookPayload):
         # Build the update note
         note_content = build_ticket_note(intent_result, action_result)
         
-        update_result = await atomicwork_client.add_private_note(
+        # Get attachment path if available
+        attachment_path = action_result.get('attachment_path')
+        
+        # Update via Public Note (private=False)
+        update_result = await atomicwork_client.add_note(
             ticket_id=ticket_id,
-            content=note_content
+            content=note_content,
+            private=False,  # Public note as requested
+            attachment_path=attachment_path
         )
         
         if update_result['success']:
