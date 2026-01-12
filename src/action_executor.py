@@ -180,6 +180,10 @@ class HRActionExecutor:
         ytd_net = salary['net'] * months_count
         
         return {
+        base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
+        download_url = f"{base_url}/downloads/pay_statement_{year}.pdf"
+
+        return {
             "status": "success",
             "message": f"Pay statement generated for FY {year}",
             "details": {
@@ -189,7 +193,7 @@ class HRActionExecutor:
                 "ytd_net_pay": f"₹{ytd_net:,}",
                 "months_covered": months_count
             },
-            "download_url": f"https://hr-agent.example.com/downloads/{ticket_id}/pay_statement_{year}.pdf"
+            "download_url": download_url
         }
     
     async def _generate_payslip_pdf(self, data: Dict, ticket_id: str) -> str:
@@ -436,6 +440,10 @@ class HRActionExecutor:
         pdf_path = await self._generate_letter_pdf(letter_data, ticket_id)
         
         return {
+        base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
+        download_url = f"{base_url}/downloads/{letter_type}_letter_{ticket_id}.pdf"
+        
+        return {
             "status": "success",
             "message": f"{letter_type.title()} letter generated successfully",
             "details": {
@@ -447,7 +455,7 @@ class HRActionExecutor:
                 "generated_on": letter_data['date']
             },
             "attachment_path": pdf_path,
-            "download_url": f"https://hr-agent.example.com/downloads/{ticket_id}/{letter_type}_letter.pdf"
+            "download_url": download_url
         }
     
     async def _generate_letter_pdf(self, data: Dict, ticket_id: str) -> str:
@@ -521,6 +529,10 @@ class HRActionExecutor:
         purpose = entities.get('purpose', 'general verification')
         
         return {
+        base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
+        download_url = f"{base_url}/downloads/salary_certificate.pdf"
+        
+        return {
             "status": "success",
             "message": "Salary certificate generated successfully",
             "details": {
@@ -531,7 +543,7 @@ class HRActionExecutor:
                 "purpose": purpose,
                 "generated_on": datetime.now().strftime("%d %B %Y")
             },
-            "download_url": f"https://hr-agent.example.com/downloads/{ticket_id}/salary_certificate.pdf"
+            "download_url": download_url
         }
     
     # ============ BENEFITS HANDLERS ============
@@ -553,10 +565,14 @@ class HRActionExecutor:
         }
         
         return {
+        base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
+        download_url = f"{base_url}/downloads/insurance_ecard.pdf"
+        
+        return {
             "status": "success",
             "message": f"Insurance e-card generated for {for_whom}",
             "details": ecard_data,
-            "download_url": f"https://hr-agent.example.com/downloads/{ticket_id}/insurance_ecard.pdf"
+            "download_url": download_url
         }
     
     async def _handle_add_dependent(self, employee: Dict, entities: Dict, ticket_id: str) -> Dict:
@@ -617,6 +633,10 @@ class HRActionExecutor:
         fy = entities.get('financial_year', '2023-24')
         
         return {
+        base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
+        download_url = f"{base_url}/downloads/form16_{fy}.pdf"
+        
+        return {
             "status": "success",
             "message": f"Form 16 for FY {fy} is available for download",
             "details": {
@@ -626,7 +646,7 @@ class HRActionExecutor:
                 "total_income": "₹15,60,000",
                 "tax_paid": "₹1,80,000"
             },
-            "download_url": f"https://hr-agent.example.com/downloads/{ticket_id}/form16_{fy}.pdf"
+            "download_url": download_url
         }
     
     async def _handle_contact_update(self, employee: Dict, entities: Dict, ticket_id: str) -> Dict:
