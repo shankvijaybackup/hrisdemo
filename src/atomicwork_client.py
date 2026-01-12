@@ -9,18 +9,22 @@ class AtomicworkClient:
     """Client for interacting with Atomicwork API"""
     
     def __init__(self):
-        self.base_url = os.getenv("ATOMICWORK_BASE_URL", "https://drreddy.atomicwork.com")
-        self.api_key = os.getenv("ATOMICWORK_API_KEY", "dummy_key")
+        self.base_url = os.getenv("ATOMICWORK_BASE_URL", "https://drreddy.atomicwork.com").strip().rstrip('/')
+        self.api_key = os.getenv("ATOMICWORK_API_KEY", "dummy_key").strip()
         self.headers = {
             "x-api-key": self.api_key,
             "Content-Type": "application/json"
         }
+        
+        # Log config (masked)
+        masked_key = self.api_key[:4] + "..." + self.api_key[-4:] if len(self.api_key) > 8 else "wont_show"
+        logger.info(f"Atomicwork Client Config - URL: {self.base_url}, Key: {masked_key}")
 
     async def add_note(self, ticket_id: str, content: str, private: bool = True, attachment_path: str = None) -> Dict[str, Any]:
-        """Add a note to a ticket, optionally with an attachment"""
+        """Add a note to a ticket/request, optionally with an attachment"""
         
         # In demo mode
-        if self.api_key == "dummy_key" or not self.base_url:
+        if self.api_key == "dummy_key" or "atomicwork" not in self.base_url:
             logger.info(f"[MOCK] Adding {'private' if private else 'public'} note to {ticket_id}")
             return {"success": True, "message": "Mock note added"}
 
@@ -29,8 +33,10 @@ class AtomicworkClient:
         if attachment_path and os.path.exists(attachment_path):
             attachment_id = await self._upload_file(attachment_path)
 
-        # 2. Add Note
-        url = f"{self.base_url}/api/v1/tickets/{ticket_id}/notes"
+        # 2. Add Note - CHANGED to /requests/ based on user cURL
+        # Try /requests/ endpoint as the creation was at /requests/create
+        url = f"{self.base_url}/api/v1/requests/{ticket_id}/notes"
+        
         payload = {
             "content": content,
             "private": private
@@ -38,6 +44,8 @@ class AtomicworkClient:
         
         if attachment_id:
             payload["attachment_ids"] = [attachment_id]
+        
+        logger.info(f"Posting note to: {url}")
         
         try:
             async with aiohttp.ClientSession() as session:
