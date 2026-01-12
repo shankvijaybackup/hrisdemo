@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: hr-service-agent
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ATOMICWORK_BASE_URL
+        value: https://drreddy.atomicwork.com
+      - key: ATOMICWORK_API_KEY
+        value: placeholder_key
