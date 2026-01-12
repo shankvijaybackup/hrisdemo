@@ -16,12 +16,12 @@ from intent_router import HRIntentRouter
 from action_executor import HRActionExecutor
 from atomicwork_client import AtomicworkClient
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Setup robust logging (print to stdout with flush)
+def log(message: str, level: str = "INFO"):
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print(f"{timestamp} | {level} | {message}", flush=True)
+
+# logger = logging.getLogger(__name__) # Disabled due to buffering/config issues
 
 # ... imports
 from fastapi.staticfiles import StaticFiles
@@ -40,13 +40,13 @@ app = FastAPI(
 )
 
 # Debug logging for startup
-logger.info("Server module loaded, initializing app...")
+log("Server module loaded, initializing app...")
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     body = await request.body()
-    logger.error(f"Validation Error: {exc}")
-    logger.error(f"Body: {body.decode()}")
+    log(f"Validation Error: {exc}", "ERROR")
+    log(f"Body: {body.decode()}", "ERROR")
     return JSONResponse(
         status_code=422,
         content={"detail": "Validation Failed", "errors": str(exc), "body": body.decode()},
@@ -54,7 +54,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.get("/")
 async def health_check():
-    logger.info("Health check received")
+    log("Health check received")
     return {"status": "live", "version": "1.0.0"}
 
 # Ensure output directory exists
@@ -122,8 +122,8 @@ async def receive_webhook(payload: WebhookPayload, background_tasks: BackgroundT
     # Normalize ID for logging
     tid = payload.display_id or payload.ticket_id or str(payload.id)
     
-    logger.info(f"Ticket ID: {tid}")
-    logger.info(f"=" * 60)
+    log(f"Ticket ID: {tid}")
+    log(f"=" * 60)
     
     # Process in background to return quickly to Atomicwork
     background_tasks.add_task(
@@ -157,15 +157,15 @@ async def process_hr_request(payload: WebhookPayload):
     
     try:
         # Step 1: Route intent
-        logger.info(f"[{ticket_id}] Analyzing intent...")
+        log(f"[{ticket_id}] Analyzing intent...")
         intent_result = intent_router.route(description)
         
-        logger.info(f"[{ticket_id}] Intent: {intent_result['intent']}")
-        logger.info(f"[{ticket_id}] Confidence: {intent_result['confidence']}")
-        logger.info(f"[{ticket_id}] Entities: {intent_result['entities']}")
+        log(f"[{ticket_id}] Intent: {intent_result['intent']}")
+        log(f"[{ticket_id}] Confidence: {intent_result['confidence']}")
+        log(f"[{ticket_id}] Entities: {intent_result['entities']}")
         
         # Step 2: Execute action based on intent
-        logger.info(f"[{ticket_id}] Executing action...")
+        log(f"[{ticket_id}] Executing action...")
         action_result = await action_executor.execute(
             intent=intent_result['intent'],
             entities=intent_result['entities'],
@@ -174,10 +174,10 @@ async def process_hr_request(payload: WebhookPayload):
             ticket_id=ticket_id
         )
         
-        logger.info(f"[{ticket_id}] Action Result: {action_result['status']}")
+        log(f"[{ticket_id}] Action Result: {action_result['status']}")
         
         # Step 3: Update Atomicwork ticket
-        logger.info(f"[{ticket_id}] Updating Atomicwork ticket...")
+        log(f"[{ticket_id}] Updating Atomicwork ticket...")
         
         # Build the update note
         note_content = build_ticket_note(intent_result, action_result)
@@ -194,20 +194,20 @@ async def process_hr_request(payload: WebhookPayload):
         )
         
         if update_result['success']:
-            logger.info(f"[{ticket_id}] Ticket updated successfully with note!")
+        log(f"[{ticket_id}] Ticket updated successfully with note!")
             
             # Step 4: Resolve the ticket
-            logger.info(f"[{ticket_id}] resolving ticket...")
+            log(f"[{ticket_id}] resolving ticket...")
             resolve_result = await atomicwork_client.resolve_request(ticket_id)
             if resolve_result['success']:
-                logger.info(f"[{ticket_id}] Ticket resolved!")
+                log(f"[{ticket_id}] Ticket resolved!")
             else:
-                 logger.error(f"[{ticket_id}] Failed to resolve ticket")
+                 log(f"[{ticket_id}] Failed to resolve ticket", "ERROR")
         else:
-            logger.error(f"[{ticket_id}] Failed to update ticket: {update_result.get('error')}")
+            log(f"[{ticket_id}] Failed to update ticket: {update_result.get('error')}", "ERROR")
         
     except Exception as e:
-        logger.error(f"[{ticket_id}] Error processing request: {str(e)}")
+        log(f"[{ticket_id}] Error processing request: {str(e)}", "ERROR")
         import traceback
         traceback.print_exc()
 
