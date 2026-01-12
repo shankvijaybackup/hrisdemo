@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 # ... imports
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi import Request
 
 # ... app init
 app = FastAPI(
