@@ -40,9 +40,12 @@ class WebhookPayload(BaseModel):
     issue_description: str
     user_email: Optional[str] = None
     machine_hostname: Optional[str] = None
-    # Additional fields that might come from Atomicwork
     requester_name: Optional[str] = None
     employee_id: Optional[str] = None
+    
+    model_config = {
+        "extra": "ignore"
+    }
 
 class HealthResponse(BaseModel):
     status: str
@@ -71,9 +74,9 @@ async def receive_webhook(payload: WebhookPayload, background_tasks: BackgroundT
     """
     logger.info(f"=" * 60)
     logger.info(f"WEBHOOK RECEIVED")
+    logger.info(f"Full Payload: {payload.model_dump_json()}")
     logger.info(f"Ticket ID: {payload.ticket_id}")
     logger.info(f"Description: {payload.issue_description}")
-    logger.info(f"User: {payload.user_email}")
     logger.info(f"=" * 60)
     
     # Process in background to return quickly to Atomicwork
