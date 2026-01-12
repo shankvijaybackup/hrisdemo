@@ -39,6 +39,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Determine if we are running in production (Render)
+is_production = os.getenv("RENDER") is not None
+
+# Initialize components
+intent_router = HRIntentRouter()
+action_executor = HRActionExecutor()
+atomicwork_client = AtomicworkClient()
+
 # Debug logging for startup
 log("Server module loaded, initializing app...")
 
