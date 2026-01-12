@@ -97,24 +97,7 @@ class AtomicworkClient:
         except Exception as e:
             logger.error(f"Error uploading file: {e}")
             return None
-                # Remove Content-Type header to let aiohttp set boundary for multipart
-                upload_headers = {k:v for k,v in self.headers.items() if k != 'Content-Type'}
-                
-                with open(file_path, 'rb') as f:
-                    data = aiohttp.FormData()
-                    data.add_field('file', f, filename=os.path.basename(file_path))
-                    
-                    async with session.post(url, data=data, headers=upload_headers) as response:
-                        if response.status in (200, 201):
-                            resp_json = await response.json()
-                            # Assuming response structure { "id": "...", ... }
-                            return resp_json.get("id")
-                        else:
-                            logger.error(f"File upload failed: {await response.text()}")
-                            return None
-        except Exception as e:
-            logger.error(f"Error uploading file: {e}")
-            return None
+
 
     # Backward compatibility alias
     async def add_private_note(self, ticket_id: str, content: str) -> Dict[str, Any]:
