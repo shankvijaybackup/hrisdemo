@@ -23,16 +23,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ... imports
+from fastapi.staticfiles import StaticFiles
+
+# ... app init
 app = FastAPI(
     title="HR Service Request Agent",
     description="NLP-powered HR service request automation for Atomicwork",
     version="1.0.0"
 )
 
-# Initialize components
-intent_router = HRIntentRouter()
-action_executor = HRActionExecutor()
-atomicwork_client = AtomicworkClient()
+# Ensure output directory exists
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "hr_outputs")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Mount static files for downloads
+app.mount("/downloads", StaticFiles(directory=OUTPUT_DIR), name="downloads")
 
 # Request Models
 # Nested models for Atomicwork payload
@@ -182,94 +188,26 @@ async def process_hr_request(payload: WebhookPayload):
         traceback.print_exc()
 
 def build_ticket_note(intent_result: dict, action_result: dict) -> str:
-    """Build HTML note for Atomicwork ticket"""
+    """Build a professional HTML note for Atomicwork ticket"""
     
-    intent = intent_result['intent']
-    confidence = intent_result['confidence']
-    entities = intent_result['entities']
-    status = action_result['status']
-    message = action_result.get('message', '')
-    details = action_result.get('details', {})
+    # Simple, professional message
+    message = action_result.get('message', 'Request processed successfully.')
     
-    # Status color
-    status_color = "#28a745" if status == "success" else "#dc3545" if status == "error" else "#ffc107"
-    status_icon = "&#10003;" if status == "success" else "&#10007;" if status == "error" else "&#9888;"
-    
-    note_html = f"""
-<div style="font-family: Arial, sans-serif; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-    <h3 style="color: #333; margin-top: 0; border-bottom: 2px solid #007bff; padding-bottom: 10px;">
-        HR Service Agent - Automated Response
-    </h3>
-    
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
-        <tr>
-            <td style="padding: 8px; border-bottom: 1px solid #dee2e6; width: 150px;"><strong>Intent Detected</strong></td>
-            <td style="padding: 8px; border-bottom: 1px solid #dee2e6;">{intent.replace('_', ' ').title()}</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border-bottom: 1px solid #dee2e6;"><strong>Confidence</strong></td>
-            <td style="padding: 8px; border-bottom: 1px solid #dee2e6;">{confidence:.0%}</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border-bottom: 1px solid #dee2e6;"><strong>Status</strong></td>
-            <td style="padding: 8px; border-bottom: 1px solid #dee2e6;">
-                <span style="color: {status_color}; font-weight: bold;">{status_icon} {str(status).upper()}</span>
-            </td>
-        </tr>
-    </table>
-    
-    <div style="background: white; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-        <h4 style="margin-top: 0; color: #495057;">Action Taken</h4>
-        <p style="margin-bottom: 0;">{message}</p>
-    </div>
-"""
-    
-    # Add entity details if present
-    if entities:
-        note_html += """
-    <div style="background: white; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-        <h4 style="margin-top: 0; color: #495057;">Extracted Information</h4>
-        <ul style="margin-bottom: 0; padding-left: 20px;">
-"""
-        for key, value in entities.items():
-            note_html += f"            <li><strong>{key.replace('_', ' ').title()}:</strong> {value}</li>\n"
-        note_html += """        </ul>
-    </div>
-"""
-    
-    # Add action-specific details
-    if details:
-        note_html += """
-    <div style="background: white; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-        <h4 style="margin-top: 0; color: #495057;">Details</h4>
-        <ul style="margin-bottom: 0; padding-left: 20px;">
-"""
-        for key, value in details.items():
-            if key != 'pdf_content':  # Don't include raw PDF content
-                note_html += f"            <li><strong>{key.replace('_', ' ').title()}:</strong> {value}</li>\n"
-        note_html += """        </ul>
-    </div>
-"""
-    
-    # Add download link if there's an attachment
+    # check for download url
+    download_section = ""
     if action_result.get('download_url'):
-        note_html += f"""
-    <div style="background: #e7f3ff; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-        <h4 style="margin-top: 0; color: #0056b3;">Download</h4>
-        <p style="margin-bottom: 0;">
-            <a href="{action_result['download_url']}" style="color: #007bff; text-decoration: none;">
-                Click here to download the generated document
-            </a>
+        download_section = f"""
+        <p>
+            <a href="{action_result['download_url']}" target="_blank">Download Document</a>
         </p>
-    </div>
-"""
-    
-    note_html += f"""
-    <p style="color: #6c757d; font-size: 11px; margin-bottom: 0; text-align: right;">
-        Processed by HR Service Agent | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-    </p>
-</div>
-"""
+        """
+
+    note_html = f"""
+    <p>Hi {action_result.get('requester_name', 'there')},</p>
+    <p>{message}</p>
+    {download_section}
+    <p>Regards,<br>HR Service Agent</p>
+    """
     
     return note_html
 

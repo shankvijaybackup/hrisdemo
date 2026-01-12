@@ -75,14 +75,28 @@ class AtomicworkClient:
             return {"success": False, "error": str(e)}
 
     async def _upload_file(self, file_path: str) -> str:
-        # Disabled for now to prioritize note/resolve flow
-        return None
-
-    async def _upload_file(self, file_path: str) -> str:
         """Upload a file and get its ID"""
         url = f"{self.base_url}/api/v1/attachments"
         try:
             async with aiohttp.ClientSession() as session:
+                # Remove Content-Type header to let aiohttp set boundary for multipart
+                upload_headers = {k:v for k,v in self.headers.items() if k != 'Content-Type'}
+                
+                with open(file_path, 'rb') as f:
+                    data = aiohttp.FormData()
+                    data.add_field('file', f, filename=os.path.basename(file_path))
+                    
+                    async with session.post(url, data=data, headers=upload_headers) as response:
+                        if response.status in (200, 201):
+                            resp_json = await response.json()
+                            # Assuming response structure { "id": "...", ... }
+                            return resp_json.get("id")
+                        else:
+                            logger.error(f"File upload failed: {await response.text()}")
+                            return None
+        except Exception as e:
+            logger.error(f"Error uploading file: {e}")
+            return None
                 # Remove Content-Type header to let aiohttp set boundary for multipart
                 upload_headers = {k:v for k,v in self.headers.items() if k != 'Content-Type'}
                 

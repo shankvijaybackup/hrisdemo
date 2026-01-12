@@ -149,6 +149,9 @@ class HRActionExecutor:
         # Generate PDF
         pdf_path = await self._generate_payslip_pdf(payslip_data, ticket_id)
         
+        base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
+        download_url = f"{base_url}/downloads/payslip_{ticket_id}.pdf"
+        
         return {
             "status": "success",
             "message": f"Payslip generated successfully for {month_name} {year_str}",
@@ -159,7 +162,7 @@ class HRActionExecutor:
                 "credit_account": employee['bank_account']['account_number']
             },
             "attachment_path": pdf_path,
-            "download_url": f"https://hr-agent.example.com/downloads/{ticket_id}/payslip_{month_name}_{year_str}.pdf"
+            "download_url": download_url
         }
     
     async def _handle_pay_statement(self, employee: Dict, entities: Dict, ticket_id: str) -> Dict:
