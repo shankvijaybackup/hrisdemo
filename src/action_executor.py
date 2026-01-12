@@ -179,7 +179,6 @@ class HRActionExecutor:
         ytd_deductions = (salary['pf_contribution'] + salary['professional_tax'] + salary['income_tax']) * months_count
         ytd_net = salary['net'] * months_count
         
-        return {
         base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
         download_url = f"{base_url}/downloads/pay_statement_{year}.pdf"
 
@@ -439,7 +438,6 @@ class HRActionExecutor:
         
         pdf_path = await self._generate_letter_pdf(letter_data, ticket_id)
         
-        return {
         base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
         download_url = f"{base_url}/downloads/{letter_type}_letter_{ticket_id}.pdf"
         
@@ -528,7 +526,6 @@ class HRActionExecutor:
         salary = employee.get('salary', HRIS_DB["employees"]["default"]["salary"])
         purpose = entities.get('purpose', 'general verification')
         
-        return {
         base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
         download_url = f"{base_url}/downloads/salary_certificate.pdf"
         
@@ -564,7 +561,6 @@ class HRActionExecutor:
             "for_member": for_whom.title()
         }
         
-        return {
         base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
         download_url = f"{base_url}/downloads/insurance_ecard.pdf"
         
@@ -632,7 +628,6 @@ class HRActionExecutor:
         """Generate Form 16"""
         fy = entities.get('financial_year', '2023-24')
         
-        return {
         base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
         download_url = f"{base_url}/downloads/form16_{fy}.pdf"
         
