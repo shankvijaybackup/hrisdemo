@@ -156,7 +156,9 @@ class HRActionExecutor:
         pdf_path = await self._generate_payslip_pdf(payslip_data, ticket_id)
         
         base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
-        download_url = f"{base_url}/downloads/payslip_{ticket_id}.pdf"
+        # Use actual filename from path
+        filename = os.path.basename(pdf_path)
+        download_url = f"{base_url}/downloads/{filename}"
         
         return {
             "status": "success",
@@ -448,7 +450,8 @@ class HRActionExecutor:
         pdf_path = await self._generate_letter_pdf(letter_data, ticket_id)
         
         base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
-        download_url = f"{base_url}/downloads/{letter_type}_letter_{ticket_id}.pdf"
+        filename = os.path.basename(pdf_path)
+        download_url = f"{base_url}/downloads/{filename}"
         
         return {
             "status": "success",
@@ -576,7 +579,8 @@ class HRActionExecutor:
         pdf_path = await self._generate_insurance_card_pdf(ecard_data, ticket_id)
         
         base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
-        download_url = f"{base_url}/downloads/insurance_ecard_{ticket_id}.pdf"
+        filename = os.path.basename(pdf_path)
+        download_url = f"{base_url}/downloads/{filename}"
         
         return {
             "status": "success",
@@ -659,7 +663,8 @@ class HRActionExecutor:
         pdf_path = await self._generate_form16_pdf(form16_data, ticket_id)
         
         base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
-        download_url = f"{base_url}/downloads/form16_{fy}_{ticket_id}.pdf"
+        filename = os.path.basename(pdf_path)
+        download_url = f"{base_url}/downloads/{filename}"
         
         return {
             "status": "success",
@@ -782,11 +787,12 @@ TRANSP:OPAQUE
 END:VEVENT
 END:VCALENDAR"""
             
+            
             with open(ics_path, 'w') as f:
                 f.write(ics_content)
                 
             base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
-            return f"Outlook access failed (server mode?). <a href='{base_url}/downloads/{ics_filename}'>Download Calendar Invite (.ics)</a>"
+            return f"Outlook integration is local-only. <a href='{base_url}/downloads/{ics_filename}'>Download Calendar Invite (.ics)</a>"
             
         except Exception as e:
             logger.error(f"ICS Gen Error: {e}")
