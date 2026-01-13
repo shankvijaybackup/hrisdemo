@@ -4,6 +4,12 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional
 import logging
 import asyncio
+try:
+    import pythoncom
+    import win32com.client
+    WIN32_AVAILABLE = True
+except ImportError:
+    WIN32_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -335,51 +341,54 @@ class HRActionExecutor:
             days = 1
         
         if available < days:
-            return {
-                "status": "warning",
-                "message": f"Insufficient leave balance. You have {available} {leave_type.replace('_', ' ')} days available.",
-                "details": {
-                    "leave_type": leave_type.replace('_', ' ').title(),
-                    "requested_days": days,
-                    "available_balance": available,
-                    "action_required": "Please select a different leave type or reduce the number of days"
-                }
-            }
-        
+             return {
+                 "status": "warning",
+                 "message": f"Insufficient leave balance. You have {available} {leave_type.replace('_', ' ')} days available.",
+                 "details": {
+                     "leave_type": leave_type.replace('_', ' ').title(),
+                     "requested_days": days,
+                     "available_balance": available,
+                     "action_required": "Please select a different leave type or reduce the number of days"
+                 }
+             }
+         
         # Create leave request
         leave_request = {
-            "id": f"LR-{ticket_id}",
-            "employee_id": employee['employee_id'],
-            "employee_name": employee['name'],
-            "leave_type": leave_type,
-            "from_date": from_date,
-            "to_date": to_date,
-            "days": days,
-            "reason": reason,
-            "status": "Pending Approval",
-            "applied_on": datetime.now().isoformat(),
-            "manager": employee.get('manager', 'Manager')
+             "id": f"LR-{ticket_id}",
+             "employee_id": employee['employee_id'],
+             "employee_name": employee['name'],
+             "leave_type": leave_type,
+             "from_date": from_date,
+             "to_date": to_date,
+             "days": days,
+             "reason": reason,
+             "status": "Approved", # Auto-approving for demo
+             "applied_on": datetime.now().isoformat(),
+             "manager": employee.get('manager', 'Manager')
         }
         HRIS_DB["leave_requests"].append(leave_request)
-        
-        # Update balance (tentatively)
+         
+        # Update balance
         balances[leave_type_key]['available'] -= days
         balances[leave_type_key]['used'] += days
-        
+
+        # Update Outlook
+        outlook_status = await self._update_outlook(employee, from_date, to_date, reason)
+         
         return {
-            "status": "success",
-            "message": f"Leave application submitted successfully. Pending approval from {employee.get('manager', 'your manager')}.",
-            "details": {
-                "leave_request_id": leave_request['id'],
-                "leave_type": leave_type.replace('_', ' ').title(),
-                "from_date": from_date,
-                "to_date": to_date,
-                "days": days,
-                "reason": reason,
-                "status": "Pending Approval",
-                "remaining_balance": balances[leave_type_key]['available'],
-                "calendar_event": f"Out of Office: {from_date} to {to_date}"
-            }
+             "status": "success",
+             "message": f"Leave application submitted and approved. {outlook_status}",
+             "details": {
+                 "leave_request_id": leave_request['id'],
+                 "leave_type": leave_type.replace('_', ' ').title(),
+                 "from_date": from_date,
+                 "to_date": to_date,
+                 "days": days,
+                 "reason": reason,
+                 "status": "Approved",
+                 "remaining_balance": balances[leave_type_key]['available'],
+                 "calendar_update": outlook_status
+             }
         }
     
     async def _handle_leave_balance(self, employee: Dict, entities: Dict, ticket_id: str) -> Dict:
@@ -549,25 +558,31 @@ class HRActionExecutor:
         """Generate insurance e-card"""
         for_whom = entities.get('for_whom', 'self')
         
+        
         ecard_data = {
             "policy_number": f"GMC-{employee['employee_id']}-2024",
             "employee_name": employee['name'],
             "employee_id": employee['employee_id'],
             "insurer": "ICICI Lombard",
             "tpa": "Medi Assist",
-            "sum_insured": "₹5,00,000",
+            "sum_insured": "500000",
             "valid_from": "01-Apr-2024",
             "valid_to": "31-Mar-2025",
-            "for_member": for_whom.title()
+            "for_member": for_whom.title(),
+            "dob": "01-Jan-1990", # Placeholder
+            "relation": "Self" if for_whom.lower() == 'self' else for_whom.title()
         }
         
+        pdf_path = await self._generate_insurance_card_pdf(ecard_data, ticket_id)
+        
         base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
-        download_url = f"{base_url}/downloads/insurance_ecard.pdf"
+        download_url = f"{base_url}/downloads/insurance_ecard_{ticket_id}.pdf"
         
         return {
             "status": "success",
             "message": f"Insurance e-card generated for {for_whom}",
             "details": ecard_data,
+            "attachment_path": pdf_path,
             "download_url": download_url
         }
     
@@ -627,9 +642,24 @@ class HRActionExecutor:
     async def _handle_form16(self, employee: Dict, entities: Dict, ticket_id: str) -> Dict:
         """Generate Form 16"""
         fy = entities.get('financial_year', '2023-24')
+        pan = "ABCDE1234F"
+        
+        form16_data = {
+            "financial_year": fy,
+            "employee_name": employee['name'],
+            "pan": pan,
+            "employee_id": employee['employee_id'],
+            "address": "Hyderabad, Telangana",
+            "employer_name": "Dr. Reddy's Laboratories Limited",
+            "employer_pan": "DRRED0000X",
+            "total_income": 1560000,
+            "tax_paid": 180000
+        }
+        
+        pdf_path = await self._generate_form16_pdf(form16_data, ticket_id)
         
         base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
-        download_url = f"{base_url}/downloads/form16_{fy}.pdf"
+        download_url = f"{base_url}/downloads/form16_{fy}_{ticket_id}.pdf"
         
         return {
             "status": "success",
@@ -637,10 +667,11 @@ class HRActionExecutor:
             "details": {
                 "financial_year": fy,
                 "employee_name": employee['name'],
-                "pan": "XXXXX1234X",
-                "total_income": "₹15,60,000",
-                "tax_paid": "₹1,80,000"
+                "pan": pan,
+                "total_income": f"₹{form16_data['total_income']:,}",
+                "tax_paid": f"₹{form16_data['tax_paid']:,}"
             },
+            "attachment_path": pdf_path,
             "download_url": download_url
         }
     
@@ -683,6 +714,230 @@ class HRActionExecutor:
             }
         }
     
+    async def _update_outlook(self, employee: Dict, from_date_str: str, to_date_str: str, reason: str) -> str:
+        """Update Outlook calendar and OOO"""
+        # Parse dates first
+        try:
+            start_date = datetime.strptime(from_date_str, "%d/%m/%Y")
+        except ValueError:
+            try:
+                start_date = datetime.strptime(from_date_str, "%Y-%m-%d")
+            except:
+                 start_date = datetime.now() + timedelta(days=1)
+
+        try:
+            end_date = datetime.strptime(to_date_str, "%d/%m/%Y")
+        except ValueError:
+            try:
+                end_date = datetime.strptime(to_date_str, "%Y-%m-%d")
+            except:
+                end_date = start_date
+
+        if WIN32_AVAILABLE:
+            try:
+                # Re-initialize COM for this thread
+                pythoncom.CoInitialize()
+                
+                outlook = win32com.client.Dispatch("Outlook.Application")
+                
+                # 1. Create Calendar Event
+                appt = outlook.CreateItem(1) # 1 = olAppointmentItem
+                
+                # Set appointment details
+                appt.Start = start_date.replace(hour=9, minute=0)
+                appt.End = end_date.replace(hour=18, minute=0)
+                appt.Subject = f"On Leave: {reason}"
+                appt.Body = f"I am on leave from {from_date_str} to {to_date_str}. Reason: {reason}"
+                appt.MeetingStatus = 0 # 0 = olNonMeeting
+                appt.BusyStatus = 3 # 3 = olOutOfOffice
+                appt.AllDayEvent = True
+                appt.Save()
+                
+                return "Outlook Calendar updated successfully."
+
+            except Exception as e:
+                logger.warning(f"Outlook COM failed: {e}. Falling back to ICS.")
+        
+        # Fallback: Generate ICS file
+        try:
+            ics_filename = f"leave_{from_date_str.replace('/', '-')}.ics"
+            ics_path = os.path.join(self.output_dir, ics_filename)
+            
+            # Simple ICS content
+            dt_start = start_date.strftime("%Y%m%d")
+            dt_end = (end_date + timedelta(days=1)).strftime("%Y%m%d") # ICS end date is exclusive
+            
+            ics_content = f"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//HR Agent//Leave App//EN
+BEGIN:VEVENT
+UID:{int(datetime.now().timestamp())}@hragent.local
+DTSTAMP:{datetime.now().strftime("%Y%m%dT%H%M%SZ")}
+DTSTART;VALUE=DATE:{dt_start}
+DTEND;VALUE=DATE:{dt_end}
+SUMMARY:On Leave: {reason}
+DESCRIPTION:I am on leave from {from_date_str} to {to_date_str}. Reason: {reason}
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR"""
+            
+            with open(ics_path, 'w') as f:
+                f.write(ics_content)
+                
+            base_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
+            return f"Outlook access failed (server mode?). <a href='{base_url}/downloads/{ics_filename}'>Download Calendar Invite (.ics)</a>"
+            
+        except Exception as e:
+            logger.error(f"ICS Gen Error: {e}")
+            return "Could not update calendar or generate invite."
+
+    async def _generate_form16_pdf(self, data: Dict, ticket_id: str) -> str:
+        """Generate Form 16 PDF"""
+        try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import A4
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib.styles import getSampleStyleSheet
+            
+            filename = os.path.join(self.output_dir, f"form16_{data['financial_year']}_{ticket_id}.pdf")
+            doc = SimpleDocTemplate(filename, pagesize=A4)
+            styles = getSampleStyleSheet()
+            elements = []
+            
+            # Title
+            elements.append(Paragraph("<b>FORM 16</b>", styles['Title']))
+            elements.append(Paragraph("<i>Certificate under section 203 of the Income-tax Act, 1961 for tax deducted at source on salary</i>", styles['Normal']))
+            elements.append(Spacer(1, 20))
+            
+            # Employer/Employee Details
+            details_data = [
+                ["Name and Address of Employer", "Name and Designation of Employee"],
+                [f"{data['employer_name']}\n{data['address']}", f"{data['employee_name']}\n{data['employee_id']}"],
+                ["PAN of the Deductor", "PAN of the Employee"],
+                [data['employer_pan'], data['pan']],
+                ["Financial Year", "Assessment Year"],
+                [data['financial_year'], f"20{int(data['financial_year'][-2:])+1}-{(int(data['financial_year'][-2:])+2)}"]
+            ]
+            
+            table = Table(details_data, colWidths=[250, 250])
+            table.setStyle(TableStyle([
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('BACKGROUND', (0, 0), (1, 0), colors.lightgrey),
+                ('BACKGROUND', (0, 2), (1, 2), colors.lightgrey),
+                ('BACKGROUND', (0, 4), (1, 4), colors.lightgrey),
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'), 
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ]))
+            elements.append(table)
+            elements.append(Spacer(1, 20))
+            
+            # Income Details
+            elements.append(Paragraph("<b>Part B (Details of Salary Paid and Tax Deducted)</b>", styles['Heading4']))
+            
+            income_data = [
+                ["Description", "Amount (Rs.)"],
+                ["1. Gross Salary", f"{data['total_income']:,}"],
+                ["2. Exemptions u/s 10", "50,000"],
+                ["3. Balance (1-2)", f"{data['total_income'] - 50000:,}"],
+                ["4. Deductions u/s 16", "50,000"],
+                ["5. Income chargeable under 'Salaries'", f"{data['total_income'] - 100000:,}"],
+                ["6. Deductions under Chapter VI-A", "1,50,000"],
+                ["7. Total Income", f"{data['total_income'] - 250000:,}"],
+                ["8. Tax Payable", f"{data['tax_paid']:,}"]
+            ]
+            
+            inc_table = Table(income_data, colWidths=[350, 150])
+            inc_table.setStyle(TableStyle([
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ]))
+            elements.append(inc_table)
+            
+            # Verification
+            elements.append(Spacer(1, 30))
+            elements.append(Paragraph("<b>Verification</b>", styles['Heading4']))
+            elements.append(Paragraph(f"I, <b>Authorized Signatory</b>, son/daughter of <b>Unknown</b>, working in the capacity of <b>Finance Manager</b> do hereby certify that a sum of Rs. <b>{data['tax_paid']:,}</b> has been deducted and deposited to the credit of the Central Government. I further certify that the information given above is true, complete and correct.", styles['Normal']))
+            
+            elements.append(Spacer(1, 20))
+            elements.append(Paragraph(f"Place: Hyderabad<br/>Date: {datetime.now().strftime('%d-%b-%Y')}", styles['Normal']))
+            
+            doc.build(elements)
+            return filename
+        except Exception as e:
+            logger.error(f"Form 16 Gen Error: {e}")
+            return self._generate_text_fallback("Form 16", data, ticket_id)
+
+    async def _generate_insurance_card_pdf(self, data: Dict, ticket_id: str) -> str:
+        """Generate Insurance PDF"""
+        try:
+            from reportlab.lib import colors
+            # Use explicit size instead of missing 'creditCard'
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib.styles import getSampleStyleSheet
+            
+            filename = os.path.join(self.output_dir, f"insurance_card_{ticket_id}.pdf")
+            # Width: 85.6mm (~242pt), Height: 53.98mm (~153pt) - Standard wallet size
+            doc = SimpleDocTemplate(filename, pagesize=(242, 153), topMargin=5, bottomMargin=5, leftMargin=5, rightMargin=5)
+            styles = getSampleStyleSheet()
+            elements = []
+            
+            # Header
+            header_data = [
+                ["Health Card", "ICICI Lombard"]
+            ]
+            header_table = Table(header_data, colWidths=[110, 110])
+            header_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#00468c")),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            elements.append(header_table)
+            elements.append(Spacer(1, 2))
+            
+            # Content
+            # Compact data for small card
+            style_small = styles['Normal']
+            style_small.fontSize = 6
+            style_small.leading = 7
+            
+            content_data = [
+                [Paragraph(f"<b>Policy:</b> {data['policy_number']}", style_small), Paragraph(f"<b>ID:</b> {data['employee_id']}", style_small)],
+                [Paragraph(f"<b>Name:</b> {data['employee_name']}", style_small), Paragraph(f"<b>Valid:</b> {data['valid_to']}", style_small)],
+                [Paragraph(f"<b>Relation:</b> {data['relation']}", style_small), Paragraph(f"<b>Sum:</b> {data['sum_insured']}", style_small)],
+                [Paragraph(f"<b>TPA:</b> {data['tpa']}", style_small), ""]
+            ]
+            
+            t = Table(content_data, colWidths=[110, 110])
+            t.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('TOPPADDING', (0, 0), (-1, -1), 1),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+            ]))
+            elements.append(t)
+            
+            # Footer
+            elements.append(Spacer(1, 2))
+            elements.append(Paragraph("<b>Emergency: 1800-2666</b>", style_small))
+            
+            doc.build(elements)
+            return filename
+        except Exception as e:
+            logger.error(f"Insurance Card Gen Error: {e}")
+            return self._generate_text_fallback("Insurance Card", data, ticket_id)
+            
+    def _generate_text_fallback(self, title, data, ticket_id):
+        filename = os.path.join(self.output_dir, f"{title.lower().replace(' ', '_')}_{ticket_id}.txt")
+        with open(filename, 'w') as f:
+            f.write(f"=== {title} ===\n\n")
+            for k, v in data.items():
+                f.write(f"{k}: {v}\n")
+        return filename
+
     async def _handle_unknown(self, employee: Dict, entities: Dict, ticket_id: str) -> Dict:
         """Handle unknown intents"""
         return {
